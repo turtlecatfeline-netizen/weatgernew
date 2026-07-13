@@ -1,0 +1,797 @@
+!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SkyPulse — Weather</title>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.16.0/firebase-auth-compat.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --sky-deep: #0a0f1e;
+    --sky-mid: #101828;
+    --sky-card: #161f35;
+    --sky-border: #1e2d4a;
+    --sky-glow: #3b82f6;
+    --sky-light: #93c5fd;
+    --sky-mist: #c7d9f8;
+    --sky-sun: #fbbf24;
+    --sky-storm: #818cf8;
+    --sky-rain: #38bdf8;
+    --text-primary: #f0f4ff;
+    --text-secondary: #8faecf;
+    --text-dim: #4a6080;
+    --danger: #f87171;
+  }
+
+  html, body {
+    height: 100%;
+    font-family: 'Space Grotesk', sans-serif;
+    background: var(--sky-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+  }
+
+  /* ── BACKGROUND ANIMATION ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, #1e3a6e44, transparent),
+                radial-gradient(ellipse 40% 40% at 80% 20%, #3b82f612, transparent),
+                radial-gradient(ellipse 30% 50% at 10% 80%, #818cf808, transparent);
+    pointer-events: none;
+  }
+
+  /* ── PAGES ── */
+  .page { display: none; position: relative; z-index: 1; min-height: 100vh; }
+  .page.active { display: flex; }
+
+  /* ── LOGIN PAGE ── */
+  #login-page {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    flex-direction: column;
+  }
+
+  .login-wrapper {
+    width: 100%; max-width: 420px;
+  }
+
+  .brand {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .brand-icon {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, var(--sky-glow), var(--sky-storm));
+    border-radius: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    margin-bottom: 16px;
+    box-shadow: 0 0 40px #3b82f640;
+  }
+  .brand h1 {
+    font-size: 28px; font-weight: 700; letter-spacing: -0.5px;
+    color: var(--text-primary);
+  }
+  .brand p { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
+
+  .card {
+    background: var(--sky-card);
+    border: 1px solid var(--sky-border);
+    border-radius: 20px;
+    padding: 36px;
+    box-shadow: 0 24px 60px #00000060;
+  }
+
+  .tabs {
+    display: flex; gap: 4px;
+    background: var(--sky-mid);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 28px;
+  }
+  .tab-btn {
+    flex: 1; padding: 10px;
+    border: none; border-radius: 8px;
+    background: transparent; color: var(--text-secondary);
+    font-family: inherit; font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: all .2s;
+  }
+  .tab-btn.active {
+    background: var(--sky-glow);
+    color: #fff;
+    box-shadow: 0 4px 12px #3b82f640;
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .form-group { margin-bottom: 18px; }
+  label {
+    display: block; font-size: 12px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-secondary); margin-bottom: 8px;
+  }
+  input[type="text"], input[type="email"], input[type="password"] {
+    width: 100%; padding: 13px 16px;
+    background: var(--sky-mid);
+    border: 1px solid var(--sky-border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-family: inherit; font-size: 15px;
+    outline: none; transition: border-color .2s, box-shadow .2s;
+  }
+  input:focus {
+    border-color: var(--sky-glow);
+    box-shadow: 0 0 0 3px #3b82f620;
+  }
+  input::placeholder { color: var(--text-dim); }
+
+  .btn-primary {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, var(--sky-glow), var(--sky-storm));
+    border: none; border-radius: 10px;
+    color: #fff; font-family: inherit; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: opacity .2s, transform .15s;
+    letter-spacing: .02em;
+  }
+  .btn-primary:hover { opacity: .9; transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+
+  .error-msg {
+    background: #f8717115; border: 1px solid #f8717140;
+    border-radius: 8px; padding: 10px 14px;
+    color: var(--danger); font-size: 13px;
+    margin-bottom: 16px; display: none;
+  }
+  .error-msg.show { display: block; }
+
+  .hint { font-size: 12px; color: var(--text-dim); text-align: center; margin-top: 20px; line-height: 1.6; }
+
+  /* ── APP PAGE ── */
+  #app-page { flex-direction: column; }
+
+  .app-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--sky-border);
+    background: var(--sky-mid);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .nav-brand { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .nav-brand span { font-size: 20px; }
+  .nav-right { display: flex; align-items: center; gap: 16px; }
+  .user-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--sky-card); border: 1px solid var(--sky-border);
+    border-radius: 100px; padding: 6px 14px 6px 8px;
+    font-size: 13px;
+  }
+  .user-avatar {
+    width: 26px; height: 26px;
+    background: linear-gradient(135deg, var(--sky-glow), var(--sky-storm));
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+  }
+  .btn-logout {
+    background: none; border: 1px solid var(--sky-border);
+    border-radius: 8px; padding: 7px 14px;
+    color: var(--text-secondary); font-family: inherit; font-size: 13px;
+    cursor: pointer; transition: all .2s;
+  }
+  .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
+
+  .app-body { padding: 32px 28px; max-width: 1100px; margin: 0 auto; width: 100%; }
+
+  /* ── SEARCH ── */
+  .search-row {
+    display: flex; gap: 12px; margin-bottom: 36px;
+    flex-wrap: wrap;
+  }
+  .search-input-wrap {
+    flex: 1; min-width: 200px;
+    position: relative;
+  }
+  .search-input-wrap input {
+    width: 100%; padding: 14px 18px 14px 46px;
+    background: var(--sky-card);
+    border: 1px solid var(--sky-border);
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-family: inherit; font-size: 15px;
+    outline: none; transition: border-color .2s, box-shadow .2s;
+  }
+  .search-input-wrap input:focus { border-color: var(--sky-glow); box-shadow: 0 0 0 3px #3b82f618; }
+  .search-icon {
+    position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+    font-size: 18px; pointer-events: none;
+  }
+  .btn-search {
+    padding: 14px 24px;
+    background: var(--sky-glow);
+    border: none; border-radius: 12px;
+    color: #fff; font-family: inherit; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: all .2s;
+    white-space: nowrap;
+  }
+  .btn-search:hover { background: #2563eb; }
+  .btn-search:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── WEATHER HERO ── */
+  .weather-hero {
+    background: linear-gradient(135deg, var(--sky-card), #0d1f3c);
+    border: 1px solid var(--sky-border);
+    border-radius: 24px; padding: 36px;
+    margin-bottom: 24px;
+    position: relative; overflow: hidden;
+    display: none;
+  }
+  .weather-hero.visible { display: block; }
+  .weather-hero::before {
+    content: '';
+    position: absolute; top: -60px; right: -60px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, #3b82f620, transparent 70%);
+    border-radius: 50%;
+  }
+
+  .hero-top { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
+  .hero-location { font-size: 13px; color: var(--sky-light); font-weight: 500; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .hero-city { font-size: 32px; font-weight: 700; letter-spacing: -1px; margin-bottom: 4px; }
+  .hero-date { font-size: 14px; color: var(--text-secondary); }
+
+  .hero-temp-block { text-align: right; }
+  .hero-emoji { font-size: 64px; line-height: 1; margin-bottom: 8px; display: block; }
+  .hero-temp { font-size: 72px; font-weight: 700; line-height: 1; font-family: 'Space Mono', monospace; }
+  .hero-temp sup { font-size: 28px; vertical-align: super; }
+  .hero-desc { font-size: 18px; color: var(--sky-light); font-weight: 500; margin-top: 8px; text-transform: capitalize; }
+
+  .hero-stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 16px; margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--sky-border);
+  }
+  .stat-item { }
+  .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); margin-bottom: 4px; }
+  .stat-value { font-size: 20px; font-weight: 600; font-family: 'Space Mono', monospace; color: var(--sky-light); }
+
+  /* ── FORECAST ── */
+  .section-title {
+    font-size: 13px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .forecast-row {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 12px; margin-bottom: 28px;
+    display: none;
+  }
+  .forecast-row.visible { display: grid; }
+
+  .forecast-card {
+    background: var(--sky-card); border: 1px solid var(--sky-border);
+    border-radius: 16px; padding: 18px 16px;
+    text-align: center; transition: border-color .2s;
+  }
+  .forecast-card:hover { border-color: var(--sky-glow); }
+  .forecast-day { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary); margin-bottom: 10px; }
+  .forecast-emoji { font-size: 32px; margin-bottom: 10px; display: block; }
+  .forecast-hi { font-size: 20px; font-weight: 700; font-family: 'Space Mono', monospace; }
+  .forecast-lo { font-size: 13px; color: var(--text-dim); margin-top: 2px; font-family: 'Space Mono', monospace; }
+
+  /* ── AI INSIGHT ── */
+  .ai-card {
+    background: linear-gradient(135deg, #0f1e38, #13203a);
+    border: 1px solid #2a3f6a;
+    border-radius: 20px; padding: 24px;
+    margin-bottom: 28px;
+    display: none;
+  }
+  .ai-card.visible { display: block; }
+  .ai-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .ai-badge {
+    background: linear-gradient(135deg, var(--sky-glow), var(--sky-storm));
+    border-radius: 6px; padding: 3px 8px;
+    font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #fff;
+  }
+  .ai-header-text { font-size: 14px; font-weight: 600; color: var(--sky-light); }
+  .ai-content { font-size: 15px; color: var(--text-secondary); line-height: 1.7; }
+  .ai-loading { display: flex; align-items: center; gap: 10px; color: var(--text-dim); font-size: 14px; }
+  .dots span {
+    display: inline-block; width: 6px; height: 6px;
+    background: var(--sky-glow); border-radius: 50%;
+    animation: pulse 1.2s infinite;
+  }
+  .dots span:nth-child(2) { animation-delay: .2s; }
+  .dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes pulse { 0%,80%,100%{opacity:.2;transform:scale(.8)} 40%{opacity:1;transform:scale(1)} }
+
+  /* ── QUICK CITIES ── */
+  .quick-cities { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 32px; }
+  .city-pill {
+    background: var(--sky-card); border: 1px solid var(--sky-border);
+    border-radius: 100px; padding: 8px 16px;
+    font-size: 13px; font-weight: 500; color: var(--text-secondary);
+    cursor: pointer; transition: all .2s;
+  }
+  .city-pill:hover { border-color: var(--sky-glow); color: var(--sky-light); }
+
+  /* ── PLACEHOLDER ── */
+  .placeholder {
+    text-align: center; padding: 60px 20px;
+    color: var(--text-dim);
+  }
+  .placeholder-emoji { font-size: 64px; margin-bottom: 16px; }
+  .placeholder h3 { font-size: 18px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+  .placeholder p { font-size: 14px; max-width: 300px; margin: 0 auto; line-height: 1.6; }
+
+  /* ── UNIT TOGGLE ── */
+  .unit-toggle {
+    display: flex; gap: 4px;
+    background: var(--sky-card);
+    border: 1px solid var(--sky-border);
+    border-radius: 10px; padding: 4px;
+    margin-left: auto;
+  }
+  .unit-btn {
+    padding: 6px 14px;
+    border: none; border-radius: 7px;
+    background: transparent; color: var(--text-secondary);
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all .2s;
+  }
+  .unit-btn.active { background: var(--sky-glow); color: #fff; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 600px) {
+    .app-nav { padding: 16px 20px; }
+    .app-body { padding: 24px 16px; }
+    .hero-city { font-size: 26px; }
+    .hero-temp { font-size: 56px; }
+    .hero-emoji { font-size: 48px; }
+    .card { padding: 24px 20px; }
+    .nav-brand { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN PAGE ══ -->
+<div id="login-page" class="page active">
+  <div class="login-wrapper">
+    <div class="brand">
+      <div class="brand-icon">🌤️</div>
+      <h1>SkyPulse</h1>
+      <p>Real-time weather, intelligently presented</p>
+    </div>
+    <div class="card">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('login')">Sign In</button>
+        <button class="tab-btn" onclick="switchTab('register')">Create Account</button>
+      </div>
+
+      <!-- LOGIN TAB -->
+      <div id="tab-login" class="tab-content active">
+        <div class="error-msg" id="login-error"></div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password">
+        </div>
+        <button class="btn-primary" onclick="handleLogin()">Sign In</button>
+        <p class="hint">New here? Use the <strong>Create Account</strong> tab to sign up — accounts are powered by Firebase Authentication.</p>
+      </div>
+
+      <!-- REGISTER TAB -->
+      <div id="tab-register" class="tab-content">
+        <div class="error-msg" id="register-error"></div>
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="reg-name" placeholder="Your name">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="reg-email" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="reg-password" placeholder="At least 6 characters">
+        </div>
+        <button class="btn-primary" onclick="handleRegister()">Create Account</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ APP PAGE ══ -->
+<div id="app-page" class="page">
+  <nav class="app-nav">
+    <div class="nav-brand"><span>🌤️</span> SkyPulse</div>
+    <div class="nav-right">
+      <div class="unit-toggle">
+        <button class="unit-btn active" id="btn-c" onclick="setUnit('C')">°C</button>
+        <button class="unit-btn" id="btn-f" onclick="setUnit('F')">°F</button>
+      </div>
+      <div class="user-chip">
+        <div class="user-avatar" id="user-avatar">U</div>
+        <span id="user-name">User</span>
+      </div>
+      <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="app-body">
+    <!-- Search -->
+    <div class="search-row">
+      <div class="search-input-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="city-input" placeholder="Search city, e.g. Tokyo, London, New York…"
+          onkeydown="if(event.key==='Enter') fetchWeather()">
+      </div>
+      <button class="btn-search" id="search-btn" onclick="fetchWeather()">Get Weather</button>
+    </div>
+
+    <!-- Quick Cities -->
+    <div class="quick-cities">
+      <span style="font-size:12px;color:var(--text-dim);align-self:center;text-transform:uppercase;letter-spacing:.06em;">Quick:</span>
+      <div class="city-pill" onclick="quickSearch('London')">🇬🇧 London</div>
+      <div class="city-pill" onclick="quickSearch('Tokyo')">🇯🇵 Tokyo</div>
+      <div class="city-pill" onclick="quickSearch('New York')">🗽 New York</div>
+      <div class="city-pill" onclick="quickSearch('Sydney')">🇦🇺 Sydney</div>
+      <div class="city-pill" onclick="quickSearch('Dubai')">🇦🇪 Dubai</div>
+      <div class="city-pill" onclick="quickSearch('Paris')">🇫🇷 Paris</div>
+    </div>
+
+    <!-- Weather Hero -->
+    <div class="weather-hero" id="weather-hero">
+      <div class="hero-top">
+        <div>
+          <div class="hero-location" id="hero-country"></div>
+          <div class="hero-city" id="hero-city"></div>
+          <div class="hero-date" id="hero-date"></div>
+        </div>
+        <div class="hero-temp-block">
+          <span class="hero-emoji" id="hero-emoji"></span>
+          <div class="hero-temp"><span id="hero-temp"></span><sup id="hero-unit">°C</sup></div>
+          <div class="hero-desc" id="hero-desc"></div>
+        </div>
+      </div>
+      <div class="hero-stats">
+        <div class="stat-item"><div class="stat-label">Feels Like</div><div class="stat-value" id="stat-feels"></div></div>
+        <div class="stat-item"><div class="stat-label">Humidity</div><div class="stat-value" id="stat-humidity"></div></div>
+        <div class="stat-item"><div class="stat-label">Wind</div><div class="stat-value" id="stat-wind"></div></div>
+        <div class="stat-item"><div class="stat-label">Visibility</div><div class="stat-value" id="stat-vis"></div></div>
+        <div class="stat-item"><div class="stat-label">UV Index</div><div class="stat-value" id="stat-uv"></div></div>
+        <div class="stat-item"><div class="stat-label">Pressure</div><div class="stat-value" id="stat-pres"></div></div>
+      </div>
+    </div>
+
+    <!-- AI Insight -->
+    <div class="ai-card" id="ai-card">
+      <div class="ai-header">
+        <div class="ai-badge">AI</div>
+        <div class="ai-header-text">Weather Intelligence</div>
+      </div>
+      <div class="ai-content" id="ai-content">
+        <div class="ai-loading">
+          <div class="dots"><span></span><span></span><span></span></div>
+          Generating weather insight…
+        </div>
+      </div>
+    </div>
+
+    <!-- 5-Day Forecast -->
+    <div id="forecast-section" style="display:none">
+      <div class="section-title">5-Day Forecast</div>
+      <div class="forecast-row visible" id="forecast-row"></div>
+    </div>
+
+    <!-- Placeholder -->
+    <div class="placeholder" id="placeholder">
+      <div class="placeholder-emoji">🌍</div>
+      <h3>Search for a city</h3>
+      <p>Enter any city name above or tap a quick-access button to view live weather.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── FIREBASE SETUP (compat SDK — works from file:// and http:// alike) ──
+const firebaseConfig = {
+  apiKey: "AIzaSyCxcXrYPN22vsmZmKXjZE5d8QD2eAuealo",
+  authDomain: "weatherr-1a03e.firebaseapp.com",
+  projectId: "weatherr-1a03e",
+  storageBucket: "weatherr-1a03e.firebasestorage.app",
+  messagingSenderId: "466399884028",
+  appId: "1:466399884028:web:8a988f9edc171477e4dd79"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+
+// Wraps a promise so it rejects with a clear error instead of hanging forever
+// if the network request never comes back (common on flaky mobile connections).
+function withTimeout(promise, ms = 15000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject({ code: 'auth/timeout' }), ms)
+    )
+  ]);
+}
+
+function friendlyAuthError(err) {
+  switch (err.code) {
+    case 'auth/email-already-in-use': return 'An account with this email already exists.';
+    case 'auth/invalid-email': return 'Please enter a valid email.';
+    case 'auth/weak-password': return 'Password must be at least 6 characters.';
+    case 'auth/missing-password': return 'Please enter a password.';
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found': return 'Invalid email or password.';
+    case 'auth/too-many-requests': return 'Too many attempts. Please wait a moment and try again.';
+    case 'auth/timeout': return 'This is taking too long — check your internet connection and try again.';
+    default: return 'Something went wrong. Please try again.';
+  }
+}
+
+// ── TAB SWITCHING ──
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0) === (tab === 'login'));
+  });
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+  clearErrors();
+}
+
+function clearErrors() {
+  document.querySelectorAll('.error-msg').forEach(e => { e.classList.remove('show'); e.textContent = ''; });
+}
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.classList.add('show');
+}
+
+// ── LOGIN ──
+async function handleLogin() {
+  clearErrors();
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-password').value;
+  if (!email || !pass) return showError('login-error', 'Please fill in all fields.');
+  const btn = document.querySelector('#tab-login .btn-primary');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    await withTimeout(auth.signInWithEmailAndPassword(email, pass));
+    // onAuthStateChanged will handle launching the app
+  } catch (err) {
+    showError('login-error', friendlyAuthError(err));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+}
+
+// ── REGISTER ──
+async function handleRegister() {
+  clearErrors();
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pass = document.getElementById('reg-password').value;
+  if (!name || !email || !pass) return showError('register-error', 'Please fill in all fields.');
+  if (pass.length < 6) return showError('register-error', 'Password must be at least 6 characters.');
+  if (!/\S+@\S+\.\S+/.test(email)) return showError('register-error', 'Please enter a valid email.');
+  const btn = document.querySelector('#tab-register .btn-primary');
+  btn.disabled = true; btn.textContent = 'Creating account…';
+  try {
+    const cred = await withTimeout(auth.createUserWithEmailAndPassword(email, pass));
+    await cred.user.updateProfile({ displayName: name });
+    // onAuthStateChanged fires from createUser, but displayName may not be
+    // reflected on cred.user's cached state yet — launch explicitly with the name.
+    launchApp({ name, email });
+  } catch (err) {
+    showError('register-error', friendlyAuthError(err));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Account';
+  }
+}
+
+// ── LOGOUT ──
+async function handleLogout() {
+  await auth.signOut();
+  // onAuthStateChanged handles resetting the UI back to the login page
+}
+
+// ── LAUNCH APP ──
+function launchApp(user) {
+  const displayName = user.name || user.email.split('@')[0];
+  document.getElementById('user-name').textContent = displayName.split(' ')[0];
+  document.getElementById('user-avatar').textContent = displayName[0].toUpperCase();
+  showPage('app-page');
+}
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── AUTH STATE (persists across reloads automatically) ──
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    launchApp({ name: user.displayName, email: user.email });
+  } else {
+    showPage('login-page');
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+    document.getElementById('city-input').value = '';
+    document.getElementById('weather-hero').classList.remove('visible');
+    document.getElementById('ai-card').classList.remove('visible');
+    document.getElementById('forecast-section').style.display = 'none';
+    document.getElementById('placeholder').style.display = 'block';
+  }
+});
+
+// ── WEATHER (Open-Meteo free API + geocoding) ──
+let currentUnit = 'C';
+let lastWeatherData = null;
+
+function setUnit(u) {
+  currentUnit = u;
+  document.getElementById('btn-c').classList.toggle('active', u === 'C');
+  document.getElementById('btn-f').classList.toggle('active', u === 'F');
+  document.getElementById('hero-unit').textContent = `°${u}`;
+  if (lastWeatherData) renderWeather(lastWeatherData);
+}
+
+function cToF(c) { return Math.round(c * 9/5 + 32); }
+function displayTemp(c) { return currentUnit === 'C' ? Math.round(c) : cToF(c); }
+
+function quickSearch(city) {
+  document.getElementById('city-input').value = city;
+  fetchWeather();
+}
+
+async function fetchWeather() {
+  const city = document.getElementById('city-input').value.trim();
+  if (!city) return;
+  const btn = document.getElementById('search-btn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  document.getElementById('placeholder').style.display = 'none';
+
+  try {
+    // Geocode
+    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`);
+    const geoData = await geoRes.json();
+    if (!geoData.results?.length) throw new Error('City not found.');
+    const loc = geoData.results[0];
+
+    // Weather
+    const wxRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,visibility,surface_pressure,uv_index&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5`
+    );
+    const wxData = await wxRes.json();
+
+    lastWeatherData = { loc, wx: wxData };
+    renderWeather(lastWeatherData);
+    fetchAIInsight(loc, wxData);
+  } catch (err) {
+    alert('Could not fetch weather: ' + err.message);
+    document.getElementById('placeholder').style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Get Weather';
+  }
+}
+
+function wmoToEmoji(code) {
+  if (code === 0) return '☀️';
+  if (code <= 2) return '⛅';
+  if (code <= 3) return '☁️';
+  if (code <= 48) return '🌫️';
+  if (code <= 57) return '🌧️';
+  if (code <= 67) return '🌨️';
+  if (code <= 77) return '❄️';
+  if (code <= 82) return '🌦️';
+  if (code <= 86) return '🌨️';
+  if (code <= 99) return '⛈️';
+  return '🌡️';
+}
+
+function wmoToDesc(code) {
+  if (code === 0) return 'Clear Sky';
+  if (code <= 2) return 'Partly Cloudy';
+  if (code <= 3) return 'Overcast';
+  if (code <= 48) return 'Foggy';
+  if (code <= 57) return 'Drizzle';
+  if (code <= 67) return 'Rain';
+  if (code <= 77) return 'Snow';
+  if (code <= 82) return 'Rain Showers';
+  if (code <= 86) return 'Snow Showers';
+  if (code <= 99) return 'Thunderstorm';
+  return 'Unknown';
+}
+
+function renderWeather({ loc, wx }) {
+  const c = wx.current;
+  const unit = currentUnit;
+
+  document.getElementById('hero-country').textContent = `${loc.country ?? ''} · ${loc.admin1 ?? ''}`;
+  document.getElementById('hero-city').textContent = loc.name;
+  document.getElementById('hero-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  document.getElementById('hero-emoji').textContent = wmoToEmoji(c.weather_code);
+  document.getElementById('hero-temp').textContent = displayTemp(c.temperature_2m);
+  document.getElementById('hero-unit').textContent = `°${unit}`;
+  document.getElementById('hero-desc').textContent = wmoToDesc(c.weather_code);
+  document.getElementById('stat-feels').textContent = `${displayTemp(c.apparent_temperature)}°${unit}`;
+  document.getElementById('stat-humidity').textContent = `${c.relative_humidity_2m}%`;
+  document.getElementById('stat-wind').textContent = `${Math.round(c.wind_speed_10m)} km/h`;
+  document.getElementById('stat-vis').textContent = `${(c.visibility/1000).toFixed(1)} km`;
+  document.getElementById('stat-uv').textContent = c.uv_index ?? '–';
+  document.getElementById('stat-pres').textContent = `${Math.round(c.surface_pressure)} hPa`;
+
+  document.getElementById('weather-hero').classList.add('visible');
+
+  // Forecast
+  const days = wx.daily;
+  const row = document.getElementById('forecast-row');
+  row.innerHTML = '';
+  for (let i = 0; i < days.time.length; i++) {
+    const d = new Date(days.time[i]);
+    const dayName = i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' });
+    row.innerHTML += `
+      <div class="forecast-card">
+        <div class="forecast-day">${dayName}</div>
+        <span class="forecast-emoji">${wmoToEmoji(days.weather_code[i])}</span>
+        <div class="forecast-hi">${displayTemp(days.temperature_2m_max[i])}°${unit}</div>
+        <div class="forecast-lo">${displayTemp(days.temperature_2m_min[i])}°${unit}</div>
+      </div>`;
+  }
+  document.getElementById('forecast-section').style.display = 'block';
+}
+
+// ── AI INSIGHT ──
+async function fetchAIInsight(loc, wx) {
+  const c = wx.current;
+  const card = document.getElementById('ai-card');
+  const content = document.getElementById('ai-content');
+  card.classList.add('visible');
+  content.innerHTML = `<div class="ai-loading"><div class="dots"><span></span><span></span><span></span></div> Generating weather insight…</div>`;
+
+  const prompt = `You are a weather assistant. Based on this data for ${loc.name}, ${loc.country}:
+- Temperature: ${Math.round(c.temperature_2m)}°C (feels like ${Math.round(c.apparent_temperature)}°C)
+- Conditions: ${wmoToDesc(c.weather_code)}
+- Humidity: ${c.relative_humidity_2m}%
+- Wind: ${Math.round(c.wind_speed_10m)} km/h
+- UV Index: ${c.uv_index}
+Write a single helpful, conversational paragraph (3-4 sentences) giving practical advice for what to expect and how to dress/prepare today. Be specific and useful. No headings, just prose.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content?.find(b => b.type === 'text')?.text ?? 'Could not generate insight.';
+    content.textContent = text;
+  } catch(e) {
+    content.textContent = 'AI insight unavailable. Check your connection.';
+  }
+}
+</script>
+</body>
+</html>
